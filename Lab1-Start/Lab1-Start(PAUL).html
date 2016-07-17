@@ -14,7 +14,7 @@ var colliderA = [];
 var scene;
 var wpDict = {};  // maps x,z into waypoint id
 var navigable; // dictionary (aka associate map, aka object) containing edges
-var waypoints;
+var waypoints = [];
 var adjacent;
 var nWaypoints;
 var goodWps;
@@ -52,22 +52,38 @@ function createWaypoints() {
   //Build out x vector
   while (terrainHeight(x,z)!=null){
     xVector.push(x);
-    xVector.push(-x); //Copy corresponding point in negative direction
+    if (x != 0){
+      xVector.push(-x);} //Copy corresponding point in negative direction
     x += guiControl.waypointSpacing;
   }
 
-  xVector.sort(); //Put vector in ascending order
+  xVector = xVector.sort(function(a, b){
+    if (a < b)
+        return -1;
+    if (a > b)
+        return 1;
+    else
+        return 0;
+    }); //Put vector in ascending order
   x = 0; //return to origin value
 
   //Build out z vector
   while (terrainHeight(x,z)!=null){
     zVector.push(z);
-    zVector.push(-z);
+    if (z != 0){
+    zVector.push(-z);}
     z += guiControl.waypointSpacing;
   }
 
   z = 0; //return to origin value
-  zVector.sort(); //Put vector in ascending order
+  zVector = zVector.sort(function(a, b){
+    if (a < b)
+        return -1;
+    if (a > b)
+        return 1;
+    else
+        return 0;
+    }); //Put vector in ascending order
 
   //Prepare variables for sequential iteration through vectors:
   var xVectorLength = xVector.length;
@@ -79,6 +95,7 @@ function createWaypoints() {
   var colors = geometry.colors;
 
   //Iterate through xVector and add waypoint at each z in zVector:
+  wpIndex = 0;
   for (var i = 0; i < xVectorLength; i++){
     x = xVector[i]
     for (var j = 0; j < zVectorLength; j++){
@@ -88,8 +105,14 @@ function createWaypoints() {
       positions.push( position );
       color = new THREE.Color(0,0,0);
       colors.push( colors );
+      wpDict[[x,z]] = wpIndex;
+      waypoints[wpIndex] = new Waypoint(wpIndex, position);
+      wpIndex += 1;
     }
   }
+
+  //Store number of waypoints!
+  nWaypoints = wpIndex; //Store number of waypoints in global
 
   //Plot all waypoints
   var material = new THREE.PointsMaterial( { size: 3, vertexColors: true } );
@@ -143,6 +166,7 @@ function Waypoint(id, position) {
   this.position = position;
   this.actionD = {}; // maps EFFECTIVE actions 0..7 onto the id of the neighbor waypoint you would arrive at
   //0 = Positive Z direction
+  //return this;
 }
 
 function waypointsToConsole() {
