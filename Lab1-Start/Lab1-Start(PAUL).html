@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Lab 1</title>
+<script type="text/javascript" src="js/three/three.js"></script>
+<script type="text/javascript" src="js/three/examples/controls/OrbitControls.js"></script>
+<script type="text/javascript" src="js/dat.gui.min.js"></script>
+<script type="text/javascript">
+
+var guiControl;
+var allWaypoints;
+var terrainColliderOnlyA = [];
+var colliderA = [];
+var scene;
+var wpDict = {};  // maps x,z into waypoint id
+var navigable; // dictionary (aka associate map, aka object) containing edges
+var waypoints;
+var adjacent;
+var nWaypoints;
+var goodWps;
+var edges;
+var prunedWaypoints;
+
+// helper variables for terrainHeight()
+var ahead = new THREE.Vector3(0,-1,0); //helper variable to give direction to shoot ray
+var orig = new THREE.Vector3();
+
+function terrainHeight(x,z) { //Provides Y value at height of terrain at that location
+  var higherThanEverything = 50; //fixed starting height
+  var orig = new THREE.Vector3(x,higherThanEverything,z); //concrete starting point for ray
+  var minDistance = 0;
+  var maxDistance = 100;
+  var ray = new THREE.Raycaster( orig, ahead, minDistance, maxDistance ); //knows how to shoot the ray
+  var collisions = ray.intersectObjects( terrainColliderOnlyA ); //Work happens here, goes until ray intersects an object terrainColliderOnlyA is an array of the terrainObject only
+  if (collisions.length>0) { //lenght >0 means we hit something and we are above the ground
+    var point = collisions[0].point;
+    return point.y
+  }
+  return null; //user value for nothing (also undefined, which means a variable does not yet have a value)
+}
+
+function createWaypoints() {
+
+  //Initialize coordinate variables and vector variables
+  var x = 0;
+  var z = 0;
+  var y = 0;
+
+  var xVector = [];
+  var zVector = [];
+
+  //Build out x vector
+  while (terrainHeight(x,z)!=null){
+    xVector.push(x);
+    xVector.push(-x); //Copy corresponding point in negative direction
+    x += guiControl.waypointSpacing;
+  }
+
+  xVector.sort(); //Put vector in ascending order
+  x = 0; //return to origin value
+
+  //Build out z vector
+  while (terrainHeight(x,z)!=null){
+    zVector.push(z);
+    zVector.push(-z);
+    z += guiControl.waypointSpacing;
+  }
+
+  z = 0; //return to origin value
+  zVector.sort(); //Put vector in ascending order
+
+  //Prepare variables for sequential iteration through vectors:
+  var xVectorLength = xVector.length;
+  var zVectorLength = zVector.length;
+
+  //Create necessary variables for waypoints:
+  var geometry = new THREE.Geometry();
+  var positions = geometry.vertices;
+  var colors = geometry.colors;
+
+  //Iterate through xVector and add waypoint at each z in zVector:
+  for (var i = 0; i < xVectorLength; i++){
+    x = xVector[i]
+    for (var j = 0; j < zVectorLength; j++){
+      z = zVector[j];
+      y = terrainHeight (x,z) + 12 ;
+      position = new THREE.Vector3(x,y,z);
+      positions.push( position );
+      color = new THREE.Color(0,0,0);
+      colors.push( colors );
+    }
+  }
+
+  //Plot all waypoints
+  var material = new THREE.PointsMaterial( { size: 3, vertexColors: true } );
+  allWaypoints = new THREE.Points(geometry,material);
+  scene.add(allWaypoints);
+}
+
+function createEdges() {
+
+  var nEdges = 20;
+
+  var l_geometry = new THREE.BufferGeometry();
+  var l_material = new THREE.LineBasicMaterial({ vertexColors: true });
+
+  var l_positions = new Float32Array( nEdges * 3 );
+  var l_colors = new Float32Array( nEdges * 3 );
+
+  l_geometry.addAttribute( 'position', new THREE.BufferAttribute( l_positions, 3 ) );
+  l_geometry.addAttribute( 'color', new THREE.BufferAttribute( l_colors, 3 ) );
+
+  var colorGreen = new THREE.Color();
+  colorGreen.setRGB(0,1,0);
+  var index = 0;
+  for (var i=0;i<nEdges;i++) {
+    l_positions[index]   = Math.random()*100-50;; //Update
+    l_positions[index+1] = 15; //Update
+    l_positions[index+2] = Math.random()*100-50;;//Update
+    l_colors[index]   = colorGreen.r;
+    l_colors[index+1] = colorGreen.g;
+    l_colors[index+2] = colorGreen.b;
+    index += 3;
+    l_positions[index]   = Math.random()*100-50;;
+    l_positions[index+1] = 12;
+    l_positions[index+2] = Math.random()*100-50;;
+    l_colors[index]   = colorGreen.r;
+    l_colors[index+1] = colorGreen.g;
+    l_colors[index+2] = colorGreen.b;
+    index += 3;
+  }
+
+  l_geometry.computeBoundingSphere();
+  edges = new THREE.Line( l_geometry, l_material, THREE.LineSegments );
+  scene.add( edges );
+}
+
+function pruneWaypoints() {
+}
+
+function Waypoint(id, position) {
+  this.id = id;
+  this.position = position;
+  this.actionD = {}; // maps EFFECTIVE actions 0..7 onto the id of the neighbor waypoint you would arrive at
+  //0 = Positive Z direction
+}
+
+function waypointsToConsole() {
+}
+
+var init = function() {
+  var canv = document.getElementsByTagName("canvas")[0];
+  var w = canv.clientWidth;
+  var h = canv.clientHeight;
+
+  var renderer = new THREE.WebGLRenderer({canvas:canv});
+  renderer.setSize( w, h );
+  renderer.setClearColor(new THREE.Color(0xeeeeee), 1);
+
+  scene = new THREE.Scene();
+
+  var camera = new THREE.PerspectiveCamera(
+      15,     // Field of view
+      w / h,  // Aspect ratio
+      0.1,    // Near
+      10000   // Far
+  );
+  camera.position.set( -50, 200, 50 );
+
+  var control = new THREE.OrbitControls(camera,canv);
+
+  var light = new THREE.DirectionalLight( 0xFFFFFF, 1.0 );
+  light.position.set( 0, 1, 0 );
+
+  var ambient = new THREE.AmbientLight( 0x999999 );
+
+  guiControl = {
+    waypointSpacing: 5,
+    createWaypoints: createWaypoints,
+    createEdges: createEdges,
+    pruneWaypoints: pruneWaypoints,
+    waypointsToConsole: waypointsToConsole,
+    toggleWaypoints: function() { allWaypoints.visible=!allWaypoints.visible; },
+    toggleEdges: function() { edges.visible=!edges.visible; },
+    toggleGoodWps: function() { prunedWaypoints.visible=!prunedWaypoints.visible; },
+  };
+  var gui = new dat.GUI();
+  gui.add(guiControl, 'waypointSpacing');
+  gui.add(guiControl, 'createWaypoints');
+  gui.add(guiControl, 'createEdges');
+  gui.add(guiControl, 'pruneWaypoints');
+  gui.add(guiControl, 'waypointsToConsole');
+  gui.add(guiControl, 'toggleWaypoints');
+  gui.add(guiControl, 'toggleEdges');
+  gui.add(guiControl, 'toggleGoodWps');
+
+  var callbackFinished = function( loaded ) {
+    scene = loaded;
+    scene.add( light );
+    scene.add( ambient );
+    scene.traverse(
+      function( node ) {
+        if ( node instanceof THREE.Mesh ) {
+          colliderA.push( node );
+          // Turn down the specularity
+          node.material.shininess = 0.5;
+        }
+        if ( node.name == "Terrain" )
+          terrainColliderOnlyA.push( node );
+       }
+    );
+  };
+  var loader = new THREE.ObjectLoader();
+  loader.load( "models/29palms/29palms-v4.json", callbackFinished );
+
+
+  var clock = new THREE.Clock();
+
+  var render = function() {
+    var dt = clock.getDelta();
+    control.update(dt);
+    renderer.render(scene,camera);
+    requestAnimationFrame(render);
+  };
+
+  requestAnimationFrame(render);
+};
+
+window.onload = init;
+</script>
+</head>
+<body><canvas style="width:100%;height:95%;border:1px gray solid;"></body>
+</html>
